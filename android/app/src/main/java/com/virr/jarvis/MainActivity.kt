@@ -21,7 +21,11 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.text.InputType
 import java.util.Locale
+import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -61,8 +65,25 @@ class MainActivity : Activity() {
             mediaPlaybackRequiresUserGesture = false
             allowFileAccess = false
         }
-        web.webChromeClient = WebChromeClient()
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(m: ConsoleMessage): Boolean {
+                if (m.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                    CrashLog.add("JS ERROR", "${m.message()} (${m.sourceId()}:${m.lineNumber()})")
+                }
+                return true
+            }
+        }
         web.webViewClient = object : WebViewClient() {
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                CrashLog.add("WEBVIEW RENDERER DIED", if (detail.didCrash()) "crashed" else "killed by Android (memory)")
+                // keep the app alive: rebuild the page instead of crashing
+                main.post {
+                    pageReady = false
+                    try { (view.parent as? android.view.ViewGroup)?.removeView(view); view.destroy() } catch (_: Exception) {}
+                    recreate()
+                }
+                return true
+            }
             override fun onPageFinished(view: WebView, url: String) {
                 pageReady = true
                 val pass = JSONObject.quote(prefs.getString("pass", "") ?: "")
@@ -156,7 +177,24 @@ class MainActivity : Activity() {
                 WakeService.start(this)
             }
             .setNegativeButton("Cancel", null)
+            .setNeutralButton("Share log") { _, _ -> shareLog() }
             .show()
+    }
+
+    private fun shareLog() {
+        val f = CrashLog.file()
+        if (f == null || !f.exists()) { Toast.makeText(this, "No log yet", Toast.LENGTH_SHORT).show(); return }
+        val uri = FileProvider.getUriForFile(this, "$packageName.logs", f)
+        startActivity(Intent.createChooser(
+            Intent(Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+            "Share Jarvis log"))
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_LOW) CrashLog.add("LOW MEMORY WARNING", "trim level $level")
     }
 
     // ---- conversation ------------------------------------------------------
