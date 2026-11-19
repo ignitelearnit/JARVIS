@@ -129,6 +129,16 @@
   }
 
   // ---------- brain ----------
+  // Speaks sentences as they arrive: Piper streams, other voices queue one after another.
+  function makeSpeaker() {
+    if (jarvisVoice && jarvisVoice.ready) {
+      const s = jarvisVoice.stream({ onStart: () => setState("speaking", "speaking") });
+      return { push: (t) => s.push(t), done: () => s.finish() };
+    }
+    let chain = Promise.resolve();
+    return { push: (t) => { chain = chain.then(() => speakFallback(t)); }, done: () => chain };
+  }
+
   async function ask(userText) {
     if (busy) return;
     busy = true;
@@ -136,31 +146,61 @@
     addLog("user", userText);
     history.push({ role: "user", content: userText });
     setState("thinking", "thinking");
-    let reply;
+    const speaker = makeSpeaker();
+    let reply = "";
+    let bubble = null;
+    const show = (t) => {
+      if (!bubble) { addLog("jarvis", t); bubble = logEl.lastChild; }
+      else { bubble.textContent = t; logEl.scrollTop = logEl.scrollHeight; }
+    };
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json", "x-jarvis-pass": pass },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: history, stream: true }),
       });
-      const data = await res.json();
       if (res.status === 401) {
         reply = "That passcode doesn't seem right. Please reload and try again.";
         localStorage.removeItem("jarvis-pass");
         history.pop();
-      } else if (!res.ok) {
-        reply = "I'm having trouble reaching my core systems. " + (data.error || "");
+        show(reply); speaker.push(reply);
+      } else if (!res.ok || !res.body) {
+        let msg = "";
+        try { msg = (await res.json()).error || ""; } catch {}
+        reply = "I'm having trouble reaching my core systems. " + msg;
         history.pop();
+        show(reply); speaker.push(reply);
       } else {
-        reply = data.reply;
-        history.push({ role: "assistant", content: reply });
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let pending = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const t = dec.decode(value, { stream: true });
+          reply += t; pending += t;
+          show(reply);
+          let m;
+          while ((m = pending.match(/^[\s\S]*?[.!?]["')]*(?=\s)/))) {
+            speaker.push(m[0].trim());
+            pending = pending.slice(m[0].length);
+          }
+        }
+        if (pending.trim()) speaker.push(pending.trim());
+        reply = reply.trim();
+        if (reply) history.push({ role: "assistant", content: reply });
+        else { history.pop(); reply = "My apologies, I seem to have lost my train of thought."; show(reply); speaker.push(reply); }
       }
     } catch (e) {
-      reply = "I can't reach the network at the moment.";
-      history.pop();
+      if (!reply) {
+        reply = "I can't reach the network at the moment.";
+        history.pop();
+        show(reply); speaker.push(reply);
+      } else {
+        history.push({ role: "assistant", content: reply.trim() });
+      }
     }
-    addLog("jarvis", reply);
-    await speak(reply);
+    await speaker.done();
     busy = false;
     if (NATIVE) {                // Android app: listen once for a follow-up, the app handles the rest
       setState("listening", "listening");

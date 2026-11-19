@@ -2,8 +2,8 @@
 // Env vars (set in Netlify): ANTHROPIC_API_KEY (required), JARVIS_PASSCODE (recommended),
 // JARVIS_MODEL (optional), USER_NAME (optional, default "sir").
 
-const MODEL = process.env.JARVIS_MODEL || "claude-sonnet-5-5";
-const MAX_HISTORY = 12;
+const MODEL = process.env.JARVIS_MODEL || "claude-haiku-5-5";
+const MAX_HISTORY = 8;
 
 function persona() {
   const name = process.env.USER_NAME || "sir";
@@ -50,6 +50,7 @@ export default async (req) => {
   while (messages.length && messages[0].role !== "user") messages.shift();
   if (!messages.length) return json(400, { error: "No user message" });
 
+  const wantStream = body.stream === true;
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -62,12 +63,43 @@ export default async (req) => {
       max_tokens: 300,
       system: persona(),
       messages,
+      ...(wantStream ? { stream: true } : {}),
     }),
   });
 
   if (!res.ok) {
     const detail = await res.text();
     return json(502, { error: "Claude request failed", detail: detail.slice(0, 300) });
+  }
+
+  if (wantStream) {
+    // Turn Anthropic's event stream into plain text chunks the page can speak as they arrive.
+    const dec = new TextDecoder();
+    const enc = new TextEncoder();
+    let buf = "";
+    const out = res.body.pipeThrough(
+      new TransformStream({
+        transform(chunk, controller) {
+          buf += dec.decode(chunk, { stream: true });
+          let i;
+          while ((i = buf.indexOf("\n")) >= 0) {
+            const line = buf.slice(0, i).trim();
+            buf = buf.slice(i + 1);
+            if (!line.startsWith("data:")) continue;
+            try {
+              const ev = JSON.parse(line.slice(5));
+              if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") {
+                controller.enqueue(enc.encode(ev.delta.text));
+              }
+            } catch {}
+          }
+        },
+      })
+    );
+    return new Response(out, {
+      status: 200,
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-cache" },
+    });
   }
 
   const data = await res.json();

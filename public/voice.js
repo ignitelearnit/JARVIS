@@ -179,6 +179,45 @@ export class JarvisVoice {
       .trim();
   }
 
+  // Streaming speech: push() sentences as they arrive; each is synthesised in turn and
+  // queued to play straight after the last, so speech starts with the first sentence.
+  stream({ onStart } = {}) {
+    this.init();
+    const self = this;
+    const myRun = ++this.runId;
+    const rate = this.config.audio.sample_rate;
+    let when = 0, started = false, last = null, chain = Promise.resolve();
+    const play = async (sentence) => {
+      if (myRun !== self.runId) return;
+      if (self.ctx.state === "suspended") await self.ctx.resume();
+      const samples = await self.synth(sentence);
+      if (myRun !== self.runId) return;
+      const buffer = self.ctx.createBuffer(1, samples.length, rate);
+      buffer.copyToChannel(samples, 0);
+      const src = self.ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(self.analyser);
+      src.onended = () => { src.ended = true; if (src.waiter) src.waiter(); };
+      when = Math.max(when, self.ctx.currentTime + 0.05);
+      src.start(when);
+      when += buffer.duration + 0.12;
+      self.sources.push(src);
+      last = src;
+      if (!started) { started = true; if (onStart) onStart(); }
+    };
+    return {
+      push(text) {
+        const s = JarvisVoice.clean(text).trim();
+        if (!s) return;
+        chain = chain.then(() => play(s)).catch((e) => console.warn("[jarvis voice] sentence failed", e));
+      },
+      async finish() {
+        await chain;
+        if (last && !last.ended && myRun === self.runId) await new Promise((r) => { last.waiter = r; });
+      },
+    };
+  }
+
   // Speaks text sentence by sentence so the first words start quickly.
   // Resolves when the speech has finished (or was stopped).
   async speak(text, { onStart } = {}) {
