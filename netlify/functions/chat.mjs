@@ -72,6 +72,7 @@ export default async (req) => {
     const dec = new TextDecoder();
     const enc = new TextEncoder();
     let buf = "";
+    let finished = false;
     const out = res.body.pipeThrough(
       new TransformStream({
         transform(chunk, controller) {
@@ -83,6 +84,7 @@ export default async (req) => {
             if (!line.startsWith("data:")) continue;
             try {
               const ev = JSON.parse(line.slice(5));
+              if (ev.type === "message_stop") finished = true;
               if (ev.type === "error") console.error("Anthropic stream error", JSON.stringify(ev));
               if (ev.type === "message_delta" && ev.delta && ev.delta.stop_reason && ev.delta.stop_reason !== "end_turn") {
                 console.warn("Stream stop_reason", ev.delta.stop_reason);
@@ -92,6 +94,9 @@ export default async (req) => {
               }
             } catch {}
           }
+        },
+        flush() {
+          if (!finished) console.warn("Stream ended without message_stop (reply may be cut short)");
         },
       })
     );
