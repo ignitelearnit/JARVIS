@@ -128,6 +128,39 @@
     });
   }
 
+  // ---------- thinking sound ----------
+  // Soft synthesised pulses while Jarvis thinks, so the wait never feels dead.
+  const thinkSound = (() => {
+    let ctx = null, timer = null, delay = null;
+    function pulse() {
+      if (!ctx) return;
+      const t = ctx.currentTime;
+      [0, 0.16].forEach((off, i) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = "sine"; o.frequency.value = i ? 990 : 740;
+        g.gain.setValueAtTime(0, t + off);
+        g.gain.linearRampToValueAtTime(0.05, t + off + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + off + 0.14);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(t + off); o.stop(t + off + 0.16);
+      });
+    }
+    return {
+      start() {
+        this.stop();
+        delay = setTimeout(() => {
+          try {
+            ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+            if (ctx.state === "suspended") ctx.resume();
+            pulse();
+            timer = setInterval(pulse, 1100);
+          } catch {}
+        }, 600);        // only if the answer is slow
+      },
+      stop() { clearTimeout(delay); clearInterval(timer); delay = timer = null; },
+    };
+  })();
+
   // ---------- brain ----------
   // Speaks sentences as they arrive: Piper streams, other voices queue one after another.
   function makeSpeaker() {
@@ -146,7 +179,10 @@
     addLog("user", userText);
     history.push({ role: "user", content: userText });
     setState("thinking", "thinking");
+    thinkSound.start();
     const speaker = makeSpeaker();
+    const _push = speaker.push;
+    speaker.push = (t) => { thinkSound.stop(); _push(t); };
     let reply = "";
     let bubble = null;
     const show = (t) => {
@@ -200,6 +236,7 @@
         history.push({ role: "assistant", content: reply.trim() });
       }
     }
+    thinkSound.stop();
     await speaker.done();
     busy = false;
     if (NATIVE) {                // Android app: listen once for a follow-up, the app handles the rest
@@ -282,6 +319,7 @@
 
   // ---------- boot ----------
   async function loadVoice() {
+    fetch("/api/chat").catch(() => {});      // wake the server function early
     if (NATIVE && localStorage.getItem("jarvis-hq") === "0") return;   // light mode (set in the app): Android's own voice
     setState("thinking", "loading voice (first time takes a minute)");
     try {
@@ -290,6 +328,7 @@
       jarvisVoice.init();          // inside a user gesture (or the app, which allows audio)
       const ok = await jarvisVoice.load((p) => setState("thinking", "loading voice " + Math.round(p * 100) + "%"));
       if (!ok) { jarvisVoice = null; addLog("jarvis", "I couldn't load my proper voice, so you're stuck with the standard one for now."); }
+      else { try { await jarvisVoice.synth("Ready."); } catch {} }   // warm-up so the first reply isn't slow
     } catch (e) {
       jarvisVoice = null;
       console.warn(e);

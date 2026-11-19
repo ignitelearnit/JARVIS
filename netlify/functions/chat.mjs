@@ -7,14 +7,7 @@ const MAX_HISTORY = 8;
 
 function persona() {
   const name = process.env.USER_NAME || "sir";
-  return [
-    "You are J.A.R.V.I.S., a calm, dry-witted British AI butler and systems assistant, in the style of the Iron Man films.",
-    `Address the user as "${name}" now and then, not in every sentence.`,
-    "Your replies are SPOKEN ALOUD, so: keep them short (usually one to three sentences), use plain spoken English, no markdown, no lists, no emojis, no asterisks.",
-    "Use UK spelling. Never use em dashes.",
-    "Be warm, quietly confident and occasionally wry. Never grovel. If you do not know something, say so briefly.",
-    "If the user wants more detail, they will ask. Offer depth only in one short line at most.",
-  ].join(" ");
+  return `You are J.A.R.V.I.S., a calm, dry-witted British AI butler, as in the Iron Man films. Replies are spoken aloud: one to three short sentences, plain speech, no markdown, lists or emojis. UK spelling, no em dashes. Address the user as "${name}" now and then. Be warm, quietly confident, occasionally wry, never grovelling. If unsure, say so briefly.`;
 }
 
 const json = (status, body) =>
@@ -24,6 +17,8 @@ const json = (status, body) =>
   });
 
 export default async (req) => {
+  // A cheap GET lets the page warm this function up before the first question.
+  if (req.method === "GET") return new Response("ready", { status: 200 });
   if (req.method !== "POST") return json(405, { error: "POST only" });
 
   const pass = process.env.JARVIS_PASSCODE;
@@ -60,7 +55,7 @@ export default async (req) => {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 300,
+      max_tokens: 220,
       system: persona(),
       messages,
       ...(wantStream ? { stream: true } : {}),
