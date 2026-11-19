@@ -39,8 +39,20 @@ Jarvis speaks with a community-made Piper voice model of the film Jarvis (`jgkaw
 - Jarvis does not share your Claude app memory or chat history. Put anything you want him to always know into the persona in `netlify/functions/chat.mjs`.
 - Replies are capped at 300 tokens and the last 12 messages are sent each time, which keeps cost low.
 
+## Android app (say "Jarvis" with the phone in your pocket)
+
+The `android/` folder is a small app that wraps this site, listens for "Jarvis" in the background (Picovoice Porcupine, runs on the phone), listens to your request with Android's own speech recognition, and hands it to the page, which asks Claude and answers in the Jarvis voice.
+
+1. Make a free account at console.picovoice.ai and copy your AccessKey.
+2. In GitHub, open the repo's Actions tab, choose "Build Android APK", click "Run workflow", then download the `jarvis-apk` file from the finished run and unzip it.
+3. Copy `app-debug.apk` to the phone and install it (allow "install unknown apps" when asked).
+4. Open the app, allow the microphone and notifications, switch on "Display over other apps", then paste your Picovoice AccessKey and Jarvis site passcode into the settings box. Long-press the screen later to reopen settings.
+5. Say "Jarvis". He should pop up, say "Yes?", listen, answer, then listen for a follow-up and step aside after a few seconds of silence.
+
+Known limits: it needs a restart of the app after a phone reboot, and some phone makers (Xiaomi, Samsung, OnePlus) kill background apps unless you set battery use for Jarvis to "Unrestricted".
+
 ## Next steps
 
-1. Android wrapper app with an always-on "Hey Jarvis" wake word, pointing at this same site.
+1. Start the Android app automatically after a reboot.
 2. Connect tools (calendar, notes) so Jarvis can act, not just talk.
 3. Mac menu bar wrapper reusing this page.

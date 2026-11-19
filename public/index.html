@@ -54,6 +54,7 @@
   const $ = (id) => document.getElementById(id);
   const logEl = $("log"), statusEl = $("status"), micBtn = $("mic");
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const NATIVE = typeof window.AndroidJarvis !== "undefined";   // running inside the Android app
 
   // ---------- state ----------
   let state = "idle";            // idle | listening | thinking | speaking
@@ -151,6 +152,11 @@
     addLog("jarvis", reply);
     await speak(reply);
     busy = false;
+    if (NATIVE) {                // Android app: listen once for a follow-up, the app handles the rest
+      setState("listening", "listening");
+      window.AndroidJarvis.listen();
+      return;
+    }
     setState(wantListening ? "listening" : "idle", wantListening ? "listening for wake word" : "standing by");
     resumeRecognition();
   }
@@ -223,22 +229,28 @@
   });
 
   // ---------- boot ----------
-  $("pass").value = pass;
-  $("start").addEventListener("click", async () => {
-    pass = $("pass").value.trim();
-    localStorage.setItem("jarvis-pass", pass);
-    $("gate").classList.add("hidden");
+  async function loadVoice() {
     setState("thinking", "loading voice (first time takes a minute)");
     try {
       const { JarvisVoice } = await import("/voice.js");
       jarvisVoice = new JarvisVoice();
-      jarvisVoice.init();          // inside the click, so the browser allows audio
+      jarvisVoice.init();          // inside a user gesture (or the app, which allows audio)
       const ok = await jarvisVoice.load((p) => setState("thinking", "loading voice " + Math.round(p * 100) + "%"));
       if (!ok) { jarvisVoice = null; addLog("jarvis", "I couldn't load my proper voice, so you're stuck with the standard one for now."); }
     } catch (e) {
       jarvisVoice = null;
       console.warn(e);
     }
+  }
+  // Some WebViews keep audio suspended until touched; this nudges it awake.
+  document.addEventListener("pointerdown", () => { if (jarvisVoice && jarvisVoice.ctx) jarvisVoice.ctx.resume(); });
+
+  $("pass").value = pass;
+  $("start").addEventListener("click", async () => {
+    pass = $("pass").value.trim();
+    localStorage.setItem("jarvis-pass", pass);
+    $("gate").classList.add("hidden");
+    await loadVoice();
     setState("idle", "standing by");
     toggleListening();
     const hello = "Systems online. How can I help?";
@@ -248,6 +260,30 @@
     resumeRecognition();
     setState(wantListening ? "listening" : "idle", wantListening ? "listening for wake word" : "standing by");
   });
+
+  // ---------- Android app hooks ----------
+  if (NATIVE) {
+    micBtn.classList.add("hidden");
+    // Called by the app once the page has loaded.
+    window.jarvisStartup = async (p) => {
+      pass = p || "";
+      $("gate").classList.add("hidden");
+      await loadVoice();
+      setState("idle", "say \"Jarvis\"");
+    };
+    // Called by the app when it hears the wake word.
+    window.jarvisWake = async () => {
+      if (busy) return;
+      setState("speaking", "yes?");
+      await speak("Yes?");
+      setState("listening", "listening");
+      window.AndroidJarvis.listen();
+    };
+    // Called by the app when the conversation is over and it is back to waiting for the wake word.
+    window.jarvisIdle = () => { setState("idle", "say \"Jarvis\""); };
+    // Called by the app with what you said.
+    window.jarvisHeard = (text) => { if (text) ask(text); };
+  }
 
   // ---------- HUD ----------
   const cv = $("hud"), ctx = cv.getContext("2d");
