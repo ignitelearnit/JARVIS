@@ -20,6 +20,7 @@ class JarvisApp : Application() {
 
     /** Catches kills no Java handler sees: out-of-memory, native crashes, being swiped away. */
     private fun logPastExits() {
+        if (Build.VERSION.SDK_INT < 30) return
         try {
             val am = getSystemService(ACTIVITY_SERVICE) as ActivityManager
             val prefs = getSharedPreferences("jarvis-log", MODE_PRIVATE)
