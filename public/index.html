@@ -106,6 +106,16 @@
     return speakFallback(text);
   }
   function speakFallback(text) {
+    if (NATIVE && window.AndroidJarvis.speak) {
+      return new Promise((resolve) => {
+        setState("speaking", "speaking");
+        let done = false;
+        const fin = () => { if (!done) { done = true; clearTimeout(guard); window.jarvisSpoke = null; resolve(); } };
+        const guard = setTimeout(fin, 30000 + text.length * 90);
+        window.jarvisSpoke = fin;
+        window.AndroidJarvis.speak(text);
+      });
+    }
     return new Promise((resolve) => {
       if (!("speechSynthesis" in window)) return resolve();
       speechSynthesis.cancel();

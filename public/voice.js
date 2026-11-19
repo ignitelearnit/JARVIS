@@ -74,7 +74,10 @@ export class JarvisVoice {
     this.ctx = new AC();
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 512;
-    this.analyser.connect(this.ctx.destination);
+    this.gain = this.ctx.createGain();
+    this.gain.gain.value = 1.25;            // +25% louder by default
+    this.analyser.connect(this.gain);
+    this.gain.connect(this.ctx.destination);
     this.buf = new Uint8Array(this.analyser.fftSize);
     if (this.ctx.state === "suspended") this.ctx.resume();
   }

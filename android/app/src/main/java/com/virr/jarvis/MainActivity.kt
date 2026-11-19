@@ -15,7 +15,12 @@ import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.media.AudioManager
+
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.text.InputType
+import java.util.Locale
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -199,18 +204,75 @@ class MainActivity : Activity() {
         main.postDelayed({ moveTaskToBack(true) }, 300)
     }
 
+    // ---- speaking (Android's own voice, no heavy model) ----------------------
+
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+    private var queued: String? = null
+
+    private fun spoke() {
+        main.post { web.evaluateJavascript("window.jarvisSpoke && window.jarvisSpoke()", null) }
+    }
+
+    private fun boostVolume() {
+        val am = getSystemService(AUDIO_SERVICE) as AudioManager
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val floor = (max * 0.75).toInt()
+        if (am.getStreamVolume(AudioManager.STREAM_MUSIC) < floor) {
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, floor, 0)
+        }
+    }
+
+    private fun doSpeak(text: String) {
+        val t = tts ?: return spoke()
+        boostVolume()
+        val params = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f) }
+        if (t.speak(text, TextToSpeech.QUEUE_FLUSH, params, "jarvis") == TextToSpeech.ERROR) spoke()
+    }
+
+    private fun speakNow(text: String) {
+        if (tts == null) {
+            queued = text
+            tts = TextToSpeech(this) { status ->
+                if (status != TextToSpeech.SUCCESS) { tts = null; spoke(); return@TextToSpeech }
+                ttsReady = true
+                tts?.apply {
+                    language = Locale.UK
+                    setPitch(0.85f)
+                    setSpeechRate(0.98f)
+                    setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                        override fun onStart(id: String?) {}
+                        override fun onDone(id: String?) { spoke() }
+                        @Deprecated("Deprecated in Java")
+                        override fun onError(id: String?) { spoke() }
+                    })
+                }
+                queued?.let { q -> queued = null; doSpeak(q) }
+            }
+        } else if (!ttsReady) {
+            queued = text
+        } else doSpeak(text)
+    }
+
     inner class Bridge {
         @JavascriptInterface
         fun listen() { main.post { startRecognition() } }
+
+        @JavascriptInterface
+        fun speak(text: String) { main.post { speakNow(text) } }
+
+        @JavascriptInterface
+        fun stopSpeaking() { main.post { tts?.stop() } }
     }
 
     override fun onDestroy() {
         stopRecognition()
+        tts?.shutdown()
         super.onDestroy()
     }
 
     companion object {
-        private const val DEFAULT_URL = "https://virr-jarvis.netlify.app"
+        private const val DEFAULT_URL = "https://vkhjarvis.netlify.app"
         private const val REQ_PERMS = 1
     }
 }
