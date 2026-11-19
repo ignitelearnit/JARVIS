@@ -116,13 +116,16 @@ class MicroWakeWord(
          * (e.g., MockK) to create mocks of this class without triggering native library
          * loading.
          */
-        private val libraryLoaded: Unit by lazy {
-            System.loadLibrary("microwakeword")
-            Log.d(TAG, "Loaded microwakeword native library")
-        }
+        @Volatile
+        private var libraryLoaded = false
 
+        @Synchronized
         fun ensureLibraryLoaded() {
-            libraryLoaded
+            if (!libraryLoaded) {
+                System.loadLibrary("microwakeword")
+                Log.d(TAG, "Loaded microwakeword native library")
+                libraryLoaded = true
+            }
         }
 
         @JvmStatic
