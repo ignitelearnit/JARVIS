@@ -43,6 +43,7 @@ class WakeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        CrashLog.add("SERVICE", "onStartCommand action=${intent?.action}")
         createChannel()
         ServiceCompat.startForeground(
             this, NOTIFICATION_ID, notification("Listening for \"Hey Jarvis\""),
@@ -107,6 +108,7 @@ class WakeService : Service() {
             }
         } catch (e: Throwable) {
             Log.e(TAG, "Wake word listener failed", e)
+            CrashLog.add("WAKE LISTENER FAILED", e)
             main.post { update("Wake word error: ${e.message}") }
         } finally {
             try { record?.stop() } catch (_: Exception) {}
@@ -139,6 +141,7 @@ class WakeService : Service() {
     }
 
     private fun onWake() {
+        CrashLog.add("SERVICE", "wake word detected, opening app")
         listener = null
         val open = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
@@ -147,12 +150,14 @@ class WakeService : Service() {
             startActivity(open)
         } catch (e: Exception) {
             Log.e(TAG, "Could not open the app (is 'Display over other apps' allowed?)", e)
+            CrashLog.add("COULD NOT OPEN APP", e)
             update("Allow 'Display over other apps' for Jarvis")
             startListening()
         }
     }
 
     override fun onDestroy() {
+        CrashLog.add("SERVICE", "onDestroy")
         stopListening()
         super.onDestroy()
     }

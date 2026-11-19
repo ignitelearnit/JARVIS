@@ -200,23 +200,25 @@ class MainActivity : Activity() {
     // ---- conversation ------------------------------------------------------
 
     private fun wake() {
+        CrashLog.add("WAKE", "wake word heard, asking page to respond")
         web.evaluateJavascript("window.jarvisWake && window.jarvisWake()", null)
     }
 
     private fun startRecognition() {
         stopRecognition()
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) { endSession(); return }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) { endSession("recognition unavailable"); return }
         recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
             setRecognitionListener(object : RecognitionListener {
                 override fun onResults(results: Bundle) {
                     val text = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                     if (text.isNullOrBlank()) {
-                        endSession()
+                        endSession("empty result")
                     } else {
+                        CrashLog.add("HEARD", text)
                         web.evaluateJavascript("window.jarvisHeard && window.jarvisHeard(${JSONObject.quote(text)})", null)
                     }
                 }
-                override fun onError(error: Int) { endSession() }
+                override fun onError(error: Int) { endSession("recognizer error $error") }
                 override fun onReadyForSpeech(params: Bundle?) {}
                 override fun onBeginningOfSpeech() {}
                 override fun onRmsChanged(rmsdB: Float) {}
@@ -242,7 +244,8 @@ class MainActivity : Activity() {
     }
 
     /** Conversation finished (silence or error): hand the mic back to the wake word and step aside. */
-    private fun endSession() {
+    private fun endSession(reason: String = "") {
+        CrashLog.add("END SESSION", "going to background: $reason")
         stopRecognition()
         web.evaluateJavascript("window.jarvisIdle && window.jarvisIdle()", null)
         WakeService.start(this, WakeService.ACTION_RESUME)
@@ -310,7 +313,12 @@ class MainActivity : Activity() {
         fun stopSpeaking() { main.post { tts?.stop() } }
     }
 
+    override fun onPause() { super.onPause(); CrashLog.add("LIFECYCLE", "onPause") }
+    override fun onResume() { super.onResume(); CrashLog.add("LIFECYCLE", "onResume") }
+    override fun onStop() { super.onStop(); CrashLog.add("LIFECYCLE", "onStop") }
+
     override fun onDestroy() {
+        CrashLog.add("LIFECYCLE", "onDestroy (finishing=$isFinishing)")
         stopRecognition()
         tts?.shutdown()
         super.onDestroy()

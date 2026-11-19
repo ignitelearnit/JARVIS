@@ -51,4 +51,4 @@ class JarvisApp : Application() {
     }
 }
 
-object BuildConfigInfo { const val version = "0.4" }
+object BuildConfigInfo { const val version = "0.5" }
