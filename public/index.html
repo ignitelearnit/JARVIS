@@ -288,10 +288,7 @@
     // Called by the app when it hears the wake word.
     window.jarvisWake = async () => {
       if (busy) return;
-      setState("speaking", "yes?");
-      await speak("Yes?");
-      setState("listening", "listening");
-      window.AndroidJarvis.listen();
+      setState("listening", "listening");   // the app chimes and starts listening itself
     };
     // Called by the app when the conversation is over and it is back to waiting for the wake word.
     window.jarvisIdle = () => { setState("idle", "say \"Hey Jarvis\""); };

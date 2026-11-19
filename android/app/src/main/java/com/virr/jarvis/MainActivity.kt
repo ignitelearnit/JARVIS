@@ -200,11 +200,18 @@ class MainActivity : Activity() {
     // ---- conversation ------------------------------------------------------
 
     private fun wake() {
-        CrashLog.add("WAKE", "wake word heard, asking page to respond")
+        CrashLog.add("WAKE", "wake word heard, listening straight away")
         web.evaluateJavascript("window.jarvisWake && window.jarvisWake()", null)
+        // a short chime instead of a spoken "Yes?", so listening starts at once and no words are lost
+        try { android.media.ToneGenerator(AudioManager.STREAM_MUSIC, 80).startTone(android.media.ToneGenerator.TONE_PROP_ACK, 120) } catch (_: Exception) {}
+        main.postDelayed({ startRecognition() }, 180)
     }
 
-    private fun startRecognition() {
+    private var retries = 0
+
+    private fun startRecognition(isRetry: Boolean = false) {
+        if (!isRetry) retries = 0
+        CrashLog.add("LISTEN", "starting recogniser (retry=$retries)")
         stopRecognition()
         if (!SpeechRecognizer.isRecognitionAvailable(this)) { endSession("recognition unavailable"); return }
         recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
@@ -218,7 +225,16 @@ class MainActivity : Activity() {
                         web.evaluateJavascript("window.jarvisHeard && window.jarvisHeard(${JSONObject.quote(text)})", null)
                     }
                 }
-                override fun onError(error: Int) { endSession("recognizer error $error") }
+                override fun onError(error: Int) {
+                    // 11 = service disconnected, 8 = busy, 5 = client error: usually transient, so try again
+                    if ((error == 11 || error == 8 || error == 5) && retries < 3) {
+                        retries++
+                        CrashLog.add("LISTEN", "recogniser error $error, retrying ($retries)")
+                        main.postDelayed({ startRecognition(true) }, 700)
+                    } else {
+                        endSession("recognizer error $error")
+                    }
+                }
                 override fun onReadyForSpeech(params: Bundle?) {}
                 override fun onBeginningOfSpeech() {}
                 override fun onRmsChanged(rmsdB: Float) {}
