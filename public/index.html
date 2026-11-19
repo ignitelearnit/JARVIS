@@ -242,7 +242,7 @@
 
   // ---------- boot ----------
   async function loadVoice() {
-    if (NATIVE && localStorage.getItem("jarvis-hq") !== "1") return;   // light mode: Android's own voice, no heavy model
+    if (NATIVE && localStorage.getItem("jarvis-hq") === "0") return;   // light mode (set in the app): Android's own voice
     setState("thinking", "loading voice (first time takes a minute)");
     try {
       const { JarvisVoice } = await import("/voice.js");
@@ -278,8 +278,9 @@
   if (NATIVE) {
     micBtn.classList.add("hidden");
     // Called by the app once the page has loaded.
-    window.jarvisStartup = async (p) => {
+    window.jarvisStartup = async (p, hq) => {
       pass = p || "";
+      try { localStorage.setItem("jarvis-hq", hq === false ? "0" : "1"); } catch {}
       $("gate").classList.add("hidden");
       await loadVoice();
       setState("idle", "say \"Hey Jarvis\"");

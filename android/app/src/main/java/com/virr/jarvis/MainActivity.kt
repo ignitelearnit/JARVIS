@@ -25,6 +25,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import org.json.JSONObject
@@ -65,7 +66,8 @@ class MainActivity : Activity() {
             override fun onPageFinished(view: WebView, url: String) {
                 pageReady = true
                 val pass = JSONObject.quote(prefs.getString("pass", "") ?: "")
-                web.evaluateJavascript("window.jarvisStartup && window.jarvisStartup($pass)", null)
+                val hq = prefs.getBoolean("hq", true)
+                web.evaluateJavascript("window.jarvisStartup && window.jarvisStartup($pass, $hq)", null)
                 if (pendingWake) { pendingWake = false; wake() }
             }
         }
@@ -131,10 +133,14 @@ class MainActivity : Activity() {
         }
         val url = field("Jarvis site address", prefs.getString("url", DEFAULT_URL) ?: DEFAULT_URL)
         val pass = field("Site passcode", prefs.getString("pass", "") ?: "", true)
+        val hq = CheckBox(this).apply {
+            text = "Real Jarvis voice (heavier, may lag on older phones)"
+            isChecked = prefs.getBoolean("hq", true)
+        }
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 24, 48, 0)
-            addView(url); addView(pass)
+            addView(url); addView(pass); addView(hq)
         }
         AlertDialog.Builder(this)
             .setTitle("Jarvis settings")
@@ -143,6 +149,7 @@ class MainActivity : Activity() {
                 prefs.edit()
                     .putString("url", url.text.toString().trim().ifBlank { DEFAULT_URL })
                     .putString("pass", pass.text.toString().trim())
+                    .putBoolean("hq", hq.isChecked)
                     .apply()
                 pageReady = false
                 web.loadUrl(siteUrl)
