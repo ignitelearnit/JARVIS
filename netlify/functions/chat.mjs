@@ -1,0 +1,83 @@
+// Jarvis brain: receives the conversation, asks Claude, returns a short spoken-style reply.
+// Env vars (set in Netlify): ANTHROPIC_API_KEY (required), JARVIS_PASSCODE (recommended),
+// JARVIS_MODEL (optional), USER_NAME (optional, default "sir").
+
+const MODEL = process.env.JARVIS_MODEL || "claude-sonnet-5-5";
+const MAX_HISTORY = 12;
+
+function persona() {
+  const name = process.env.USER_NAME || "sir";
+  return [
+    "You are J.A.R.V.I.S., a calm, dry-witted British AI butler and systems assistant, in the style of the Iron Man films.",
+    `Address the user as "${name}" now and then, not in every sentence.`,
+    "Your replies are SPOKEN ALOUD, so: keep them short (usually one to three sentences), use plain spoken English, no markdown, no lists, no emojis, no asterisks.",
+    "Use UK spelling. Never use em dashes.",
+    "Be warm, quietly confident and occasionally wry. Never grovel. If you do not know something, say so briefly.",
+    "If the user wants more detail, they will ask. Offer depth only in one short line at most.",
+  ].join(" ");
+}
+
+const json = (status, body) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+
+export default async (req) => {
+  if (req.method !== "POST") return json(405, { error: "POST only" });
+
+  const pass = process.env.JARVIS_PASSCODE;
+  if (pass && req.headers.get("x-jarvis-pass") !== pass) {
+    return json(401, { error: "Passcode required" });
+  }
+
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return json(500, { error: "ANTHROPIC_API_KEY is not set" });
+
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return json(400, { error: "Bad JSON" });
+  }
+
+  const messages = (Array.isArray(body.messages) ? body.messages : [])
+    .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+    .slice(-MAX_HISTORY)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }));
+
+  // The API needs the first message to be from the user.
+  while (messages.length && messages[0].role !== "user") messages.shift();
+  if (!messages.length) return json(400, { error: "No user message" });
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 300,
+      system: persona(),
+      messages,
+    }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text();
+    return json(502, { error: "Claude request failed", detail: detail.slice(0, 300) });
+  }
+
+  const data = await res.json();
+  const text = (data.content || [])
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join(" ")
+    .trim();
+
+  return json(200, { reply: text || "My apologies, I seem to have lost my train of thought." });
+};
+
+export const config = { path: "/api/chat" };

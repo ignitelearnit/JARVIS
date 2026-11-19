@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#02121a">
+<title>J.A.R.V.I.S.</title>
+<style>
+  :root { --c:#2fe3ff; --c2:#0b7a96; --bg:#02121a; --warn:#ffb347; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { height:100%; background:radial-gradient(circle at 50% 40%, #06303f 0%, var(--bg) 60%, #000 100%); color:var(--c); font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif; overflow:hidden; }
+  #hud { position:fixed; inset:0; width:100%; height:100%; }
+  .top { position:fixed; top:max(14px,env(safe-area-inset-top)); left:0; right:0; text-align:center; letter-spacing:.5em; font-size:12px; opacity:.75; text-transform:uppercase; }
+  #status { position:fixed; top:calc(max(14px,env(safe-area-inset-top)) + 22px); left:0; right:0; text-align:center; letter-spacing:.3em; font-size:11px; color:var(--c2); text-transform:uppercase; }
+  #log { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(86px + env(safe-area-inset-bottom)); width:min(680px,92vw); max-height:32vh; overflow-y:auto; font-size:15px; line-height:1.45; text-align:center; mask-image:linear-gradient(transparent, #000 25%); -webkit-mask-image:linear-gradient(transparent, #000 25%); }
+  #log p { margin:6px 0; opacity:.55; }
+  #log p.user { color:#9fefff; font-style:italic; }
+  #log p.jarvis { opacity:1; text-shadow:0 0 12px rgba(47,227,255,.5); }
+  #log p:last-child { opacity:1; }
+  form { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(18px + env(safe-area-inset-bottom)); width:min(680px,92vw); display:flex; gap:8px; }
+  input, button { font:inherit; color:var(--c); background:rgba(6,48,63,.55); border:1px solid var(--c2); border-radius:22px; padding:12px 16px; outline:none; backdrop-filter:blur(4px); }
+  input { flex:1; min-width:0; }
+  input::placeholder { color:var(--c2); }
+  button { cursor:pointer; letter-spacing:.1em; font-size:13px; text-transform:uppercase; }
+  button:hover, button.on { background:rgba(47,227,255,.18); border-color:var(--c); box-shadow:0 0 14px rgba(47,227,255,.35); }
+  #gate { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; background:rgba(2,18,26,.94); z-index:10; text-align:center; padding:24px; }
+  #gate h1 { font-weight:200; letter-spacing:.6em; font-size:28px; }
+  #gate p { color:var(--c2); font-size:13px; max-width:420px; line-height:1.5; }
+  #gate input { width:min(300px,80vw); text-align:center; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<canvas id="hud"></canvas>
+<div class="top">J.A.R.V.I.S.</div>
+<div id="status">offline</div>
+<div id="log"></div>
+
+<form id="form" autocomplete="off">
+  <button type="button" id="mic" title="Toggle always-listening">Mic</button>
+  <input id="text" placeholder="Say &quot;Jarvis&quot; or type here" />
+  <button type="submit">Send</button>
+</form>
+
+<div id="gate">
+  <h1>JARVIS</h1>
+  <p>Tap to bring systems online. Your browser will ask for microphone access. Wake word listening works best in Chrome or Edge.</p>
+  <input id="pass" type="password" placeholder="Passcode (if set)" autocomplete="current-password" />
+  <button id="start" type="button">Initialise</button>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const logEl = $("log"), statusEl = $("status"), micBtn = $("mic");
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  // ---------- state ----------
+  let state = "idle";            // idle | listening | thinking | speaking
+  let history = [];              // chat history sent to the brain
+  let pass = localStorage.getItem("jarvis-pass") || "";
+  let recog = null, wantListening = false, awake = false, awakeTimer = null, busy = false;
+  const AWAKE_MS = 20000;        // follow-up window after wake word
+
+  function setState(s, label) {
+    state = s;
+    statusEl.textContent = label || s;
+  }
+  function addLog(role, text) {
+    const p = document.createElement("p");
+    p.className = role;
+    p.textContent = text;
+    logEl.appendChild(p);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // ---------- voice out ----------
+  let voice = null;
+  function pickVoice() {
+    const vs = speechSynthesis.getVoices();
+    const rank = (v) => {
+      const n = v.name.toLowerCase();
+      let s = 0;
+      if (/en-gb/i.test(v.lang)) s += 10;
+      if (/male|daniel|arthur|oliver|george|james/.test(n) && !/female/.test(n)) s += 5;
+      if (/google|natural|neural|premium|enhanced/.test(n)) s += 2;
+      return s;
+    };
+    voice = vs.slice().sort((a, b) => rank(b) - rank(a))[0] || null;
+  }
+  if ("speechSynthesis" in window) {
+    speechSynthesis.onvoiceschanged = pickVoice;
+    pickVoice();
+  }
+  function speak(text) {
+    return new Promise((resolve) => {
+      if (!("speechSynthesis" in window)) return resolve();
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = "en-GB";
+      u.rate = 0.98; u.pitch = 0.85;
+      u.onstart = () => setState("speaking", "speaking");
+      u.onend = u.onerror = () => resolve();
+      speechSynthesis.speak(u);
+    });
+  }
+
+  // ---------- brain ----------
+  async function ask(userText) {
+    if (busy) return;
+    busy = true;
+    pauseRecognition();
+    addLog("user", userText);
+    history.push({ role: "user", content: userText });
+    setState("thinking", "thinking");
+    let reply;
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-jarvis-pass": pass },
+        body: JSON.stringify({ messages: history }),
+      });
+      const data = await res.json();
+      if (res.status === 401) {
+        reply = "That passcode doesn't seem right. Please reload and try again.";
+        localStorage.removeItem("jarvis-pass");
+        history.pop();
+      } else if (!res.ok) {
+        reply = "I'm having trouble reaching my core systems. " + (data.error || "");
+        history.pop();
+      } else {
+        reply = data.reply;
+        history.push({ role: "assistant", content: reply });
+      }
+    } catch (e) {
+      reply = "I can't reach the network at the moment.";
+      history.pop();
+    }
+    addLog("jarvis", reply);
+    await speak(reply);
+    busy = false;
+    setState(wantListening ? "listening" : "idle", wantListening ? "listening for wake word" : "standing by");
+    resumeRecognition();
+  }
+
+  // ---------- wake word + listening ----------
+  function armAwake() {
+    awake = true;
+    clearTimeout(awakeTimer);
+    awakeTimer = setTimeout(() => {
+      awake = false;
+      if (wantListening) setState("listening", "listening for wake word");
+    }, AWAKE_MS);
+    setState("listening", "yes? i'm listening");
+  }
+
+  function buildRecognition() {
+    if (!SR) return null;
+    const r = new SR();
+    r.lang = "en-GB";
+    r.continuous = true;
+    r.interimResults = false;
+    r.onresult = (e) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (!e.results[i].isFinal) continue;
+        const heard = e.results[i][0].transcript.trim();
+        if (!heard) continue;
+        const m = heard.match(/\b(?:hey |hi |ok |okay )?jarvis\b[,.!?]*\s*(.*)$/i);
+        if (m) {
+          const rest = (m[1] || "").trim();
+          if (rest) { armAwake(); ask(rest); }
+          else { armAwake(); pauseRecognition(); speak("Yes?").then(() => { resumeRecognition(); setState("listening", "yes? i'm listening"); }); }
+        } else if (awake) {
+          armAwake();
+          ask(heard);
+        }
+      }
+    };
+    r.onend = () => { if (wantListening && !busy) { try { r.start(); } catch {} } };
+    r.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        wantListening = false; micBtn.classList.remove("on");
+        setState("idle", "microphone blocked");
+      }
+    };
+    return r;
+  }
+  function pauseRecognition() { try { recog && recog.stop(); } catch {} }
+  function resumeRecognition() { if (wantListening) { try { recog.start(); } catch {} } }
+
+  function toggleListening() {
+    if (!SR) { addLog("jarvis", "Voice input isn't supported in this browser. Chrome or Edge will do nicely. You can still type."); return; }
+    wantListening = !wantListening;
+    micBtn.classList.toggle("on", wantListening);
+    if (wantListening) {
+      recog = recog || buildRecognition();
+      try { recog.start(); } catch {}
+      setState("listening", "listening for wake word");
+    } else {
+      awake = false; pauseRecognition(); setState("idle", "standing by");
+    }
+  }
+  micBtn.addEventListener("click", toggleListening);
+
+  $("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const t = $("text").value.trim();
+    if (!t) return;
+    $("text").value = "";
+    ask(t);
+  });
+
+  // ---------- boot ----------
+  $("pass").value = pass;
+  $("start").addEventListener("click", async () => {
+    pass = $("pass").value.trim();
+    localStorage.setItem("jarvis-pass", pass);
+    $("gate").classList.add("hidden");
+    setState("idle", "standing by");
+    toggleListening();
+    const hello = "Systems online. How can I help?";
+    addLog("jarvis", hello);
+    pauseRecognition();
+    await speak(hello);
+    resumeRecognition();
+    setState(wantListening ? "listening" : "idle", wantListening ? "listening for wake word" : "standing by");
+  });
+
+  // ---------- HUD ----------
+  const cv = $("hud"), ctx = cv.getContext("2d");
+  let W, H, DPR;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.width = innerWidth * DPR; H = cv.height = innerHeight * DPR;
+  }
+  addEventListener("resize", resize); resize();
+
+  let energy = 0;                // smoothed activity level
+  function ring(cx, cy, r, w, rot, segs, gap, alpha) {
+    ctx.lineWidth = w;
+    ctx.strokeStyle = `rgba(47,227,255,${alpha})`;
+    const step = (Math.PI * 2) / segs;
+    for (let i = 0; i < segs; i++) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, rot + i * step, rot + i * step + step * (1 - gap));
+      ctx.stroke();
+    }
+  }
+  function frame(t) {
+    t /= 1000;
+    const target = { idle: 0.15, listening: 0.4, thinking: 0.75, speaking: 1 }[state] || 0.15;
+    energy += (target - energy) * 0.05;
+    const wobble = state === "speaking" ? (Math.sin(t * 18) + Math.sin(t * 7.3)) * 0.5 : 0;
+
+    ctx.clearRect(0, 0, W, H);
+    const cx = W / 2, cy = H * 0.42;
+    const base = Math.min(W, H) * 0.2 * (1 + 0.03 * wobble * energy);
+    ctx.save();
+    ctx.shadowColor = "rgba(47,227,255,.8)";
+    ctx.shadowBlur = (12 + 22 * energy) * DPR;
+
+    // core glow
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, base * 0.7);
+    g.addColorStop(0, `rgba(220,255,255,${0.55 + 0.4 * energy})`);
+    g.addColorStop(0.45, `rgba(47,227,255,${0.25 + 0.3 * energy})`);
+    g.addColorStop(1, "rgba(47,227,255,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, base * 0.7, 0, Math.PI * 2); ctx.fill();
+
+    const spin = 0.15 + energy * 0.9;
+    ring(cx, cy, base * 0.55, 3 * DPR, t * spin, 3, 0.25, 0.9);          // reactor triangle-ish arcs
+    ring(cx, cy, base * 0.8,  2 * DPR, -t * spin * 0.8, 24, 0.5, 0.8);   // ticks
+    ring(cx, cy, base * 1.05, 5 * DPR, t * spin * 0.5, 4, 0.55, 0.7);
+    ring(cx, cy, base * 1.35, 1.5 * DPR, -t * spin * 0.35, 90, 0.7, 0.55);
+    ring(cx, cy, base * 1.6,  2 * DPR, t * spin * 0.2, 6, 0.8, 0.45);
+
+    // thinking sweep
+    if (state === "thinking") {
+      ctx.strokeStyle = "rgba(255,179,71,.85)"; ctx.lineWidth = 4 * DPR;
+      ctx.beginPath(); ctx.arc(cx, cy, base * 1.2, t * 4, t * 4 + 1.1); ctx.stroke();
+    }
+
+    // radial voice bars while speaking / listening
+    const bars = 64;
+    for (let i = 0; i < bars; i++) {
+      const a = (i / bars) * Math.PI * 2;
+      const len = base * 0.12 + base * 0.35 * energy * (0.5 + 0.5 * Math.sin(t * 6 + i * 0.7 + wobble * 3)) * (state === "idle" ? 0.2 : 1);
+      ctx.strokeStyle = "rgba(47,227,255,.6)"; ctx.lineWidth = 2 * DPR;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * base * 1.75, cy + Math.sin(a) * base * 1.75);
+      ctx.lineTo(cx + Math.cos(a) * (base * 1.75 + len), cy + Math.sin(a) * (base * 1.75 + len));
+      ctx.stroke();
+    }
+    ctx.restore();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
