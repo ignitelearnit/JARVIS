@@ -183,7 +183,7 @@
         if (!e.results[i].isFinal) continue;
         const heard = e.results[i][0].transcript.trim();
         if (!heard) continue;
-        const m = heard.match(/\b(?:hey |hi |ok |okay )?jarvis\b[,.!?]*\s*(.*)$/i);
+        const m = heard.match(/\b(?:hey |hi |ok |okay |hay )?(?:jarvis|jarvas|jarvus|jarvi|travis|service)\b[,.!?]*\s*(.*)$/i);
         if (m) {
           const rest = (m[1] || "").trim();
           if (rest) { armAwake(); ask(rest); }
@@ -194,8 +194,10 @@
         }
       }
     };
-    r.onend = () => { if (wantListening && !busy) { try { r.start(); } catch {} } };
+    r.onend = () => { if (wantListening && !busy) setTimeout(() => { if (wantListening && !busy) { try { r.start(); } catch {} } }, 250); };
     r.onerror = (e) => {
+      if (e.error === "audio-capture") setState("idle", "no microphone found, check Chrome's mic setting");
+      else if (e.error === "network") setState("listening", "speech service unreachable, retrying");
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
         wantListening = false; micBtn.classList.remove("on");
         setState("idle", "microphone blocked");
