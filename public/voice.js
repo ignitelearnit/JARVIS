@@ -88,7 +88,8 @@ export class JarvisVoice {
       ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
 
       let lastError = null;
-      for (const c of CANDIDATES) {
+      const ORDER = (typeof window !== "undefined" && window.AndroidJarvis) ? [...CANDIDATES.slice(2), ...CANDIDATES.slice(0, 2)] : CANDIDATES;
+      for (const c of ORDER) {
         try {
           const cfgBuf = await cachedFetch(c.json);
           const config = JSON.parse(new TextDecoder().decode(cfgBuf));

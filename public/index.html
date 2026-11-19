@@ -289,7 +289,7 @@
   const cv = $("hud"), ctx = cv.getContext("2d");
   let W, H, DPR;
   function resize() {
-    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    DPR = NATIVE ? 1 : Math.min(window.devicePixelRatio || 1, 2);
     W = cv.width = innerWidth * DPR; H = cv.height = innerHeight * DPR;
   }
   addEventListener("resize", resize); resize();
@@ -305,7 +305,10 @@
       ctx.stroke();
     }
   }
+  let lastDraw = 0;
   function frame(t) {
+    if (NATIVE && t - lastDraw < 33) { requestAnimationFrame(frame); return; }
+    lastDraw = t;
     t /= 1000;
     const target = { idle: 0.15, listening: 0.4, thinking: 0.75, speaking: 1 }[state] || 0.15;
     energy += (target - energy) * 0.05;
@@ -321,7 +324,7 @@
     const base = Math.min(W, H) * 0.2 * (1 + 0.03 * wobble * energy);
     ctx.save();
     ctx.shadowColor = "rgba(47,227,255,.8)";
-    ctx.shadowBlur = (12 + 22 * energy) * DPR;
+    ctx.shadowBlur = NATIVE ? 6 : (12 + 22 * energy) * DPR;
 
     // core glow
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, base * 0.7);
