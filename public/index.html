@@ -269,7 +269,7 @@
       pass = p || "";
       $("gate").classList.add("hidden");
       await loadVoice();
-      setState("idle", "say \"Jarvis\"");
+      setState("idle", "say \"Hey Jarvis\"");
     };
     // Called by the app when it hears the wake word.
     window.jarvisWake = async () => {
@@ -280,7 +280,7 @@
       window.AndroidJarvis.listen();
     };
     // Called by the app when the conversation is over and it is back to waiting for the wake word.
-    window.jarvisIdle = () => { setState("idle", "say \"Jarvis\""); };
+    window.jarvisIdle = () => { setState("idle", "say \"Hey Jarvis\""); };
     // Called by the app with what you said.
     window.jarvisHeard = (text) => { if (text) ask(text); };
   }

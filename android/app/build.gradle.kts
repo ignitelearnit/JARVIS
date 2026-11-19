@@ -12,7 +12,8 @@ android {
         minSdk = 28
         targetSdk = 34
         versionCode = 1
-        versionName = "0.1"
+        versionName = "0.2"
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     compileOptions {
@@ -26,6 +27,6 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
-    // Wake word engine. Free personal AccessKey from console.picovoice.ai
-    implementation("ai.picovoice:porcupine-android:3.+")
+    // "Hey Jarvis" wake word detector (open source, runs on the phone)
+    implementation(project(":microwakeword"))
 }

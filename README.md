@@ -39,17 +39,18 @@ Jarvis speaks with a community-made Piper voice model of the film Jarvis (`jgkaw
 - Jarvis does not share your Claude app memory or chat history. Put anything you want him to always know into the persona in `netlify/functions/chat.mjs`.
 - Replies are capped at 300 tokens and the last 12 messages are sent each time, which keeps cost low.
 
-## Android app (say "Jarvis" with the phone in your pocket)
+## Android app (say "Hey Jarvis" with the phone in your pocket)
 
-The `android/` folder is a small app that wraps this site, listens for "Jarvis" in the background (Picovoice Porcupine, runs on the phone), listens to your request with Android's own speech recognition, and hands it to the page, which asks Claude and answers in the Jarvis voice.
+The `android/` folder is a small app that wraps this site and listens for "Hey Jarvis" in the background. The wake word runs on the phone (the open-source microWakeWord detector from the Home Assistant Android app, Apache 2.0, no account or key needed). After the wake word it listens to your request with Android's own speech recognition and hands it to the page, which asks Claude and answers in the Jarvis voice.
 
-1. Make a free account at console.picovoice.ai and copy your AccessKey.
-2. In GitHub, open the repo's Actions tab, choose "Build Android APK", click "Run workflow", then download the `jarvis-apk` file from the finished run and unzip it.
-3. Copy `app-debug.apk` to the phone and install it (allow "install unknown apps" when asked).
-4. Open the app, allow the microphone and notifications, switch on "Display over other apps", then paste your Picovoice AccessKey and Jarvis site passcode into the settings box. Long-press the screen later to reopen settings.
-5. Say "Jarvis". He should pop up, say "Yes?", listen, answer, then listen for a follow-up and step aside after a few seconds of silence.
+1. In GitHub, open the repo's Actions tab, choose "Build Android APK", click "Run workflow" (it may already have run after the last push), then download the `jarvis-apk` file from the finished run and unzip it.
+2. Copy `app-debug.apk` to the phone and install it (allow "install unknown apps" when asked).
+3. Open the app, allow the microphone and notifications, switch on "Display over other apps", then enter your Jarvis site address and passcode in the settings box. Long-press the screen later to reopen settings.
+4. Say "Hey Jarvis". He should pop up, say "Yes?", listen, answer, then listen for a follow-up and step aside after a few seconds of silence.
 
-Known limits: it needs a restart of the app after a phone reboot, and some phone makers (Xiaomi, Samsung, OnePlus) kill background apps unless you set battery use for Jarvis to "Unrestricted".
+Known limits: open the app once after a phone reboot; on Xiaomi, Samsung or OnePlus set battery use for Jarvis to "Unrestricted" or Android will kill it; the detector is tuned conservatively, so speak clearly and say it as one phrase. The first build downloads some native code from GitHub, so it takes a few minutes.
+
+Credits: wake word code and the "Hey Jarvis" model come from the Home Assistant Android app and Kevin Ahrendt's microWakeWord models (see `android/microwakeword/LICENSE-home-assistant-android.md`).
 
 ## Next steps
 

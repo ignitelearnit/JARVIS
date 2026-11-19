@@ -93,14 +93,14 @@ class MainActivity : Activity() {
             askedOverlay = true
             AlertDialog.Builder(this)
                 .setTitle("One more permission")
-                .setMessage("Jarvis needs 'Display over other apps' so he can pop up when you say his name. Tap OK, find Jarvis in the list and switch it on, then come back.")
+                .setMessage("Jarvis needs 'Display over other apps' so he can pop up when you say \"Hey Jarvis\". Tap OK, find Jarvis in the list and switch it on, then come back.")
                 .setPositiveButton("OK") { _, _ ->
                     startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
                 }
                 .setNegativeButton("Skip", null)
                 .show()
         }
-        if ((prefs.getString("key", "") ?: "").isBlank()) {
+        if (!prefs.contains("url")) {
             showSettings()
             return
         }
@@ -125,12 +125,11 @@ class MainActivity : Activity() {
             if (secret) inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
         val url = field("Jarvis site address", prefs.getString("url", DEFAULT_URL) ?: DEFAULT_URL)
-        val key = field("Picovoice AccessKey", prefs.getString("key", "") ?: "", true)
         val pass = field("Site passcode", prefs.getString("pass", "") ?: "", true)
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 24, 48, 0)
-            addView(url); addView(key); addView(pass)
+            addView(url); addView(pass)
         }
         AlertDialog.Builder(this)
             .setTitle("Jarvis settings")
@@ -138,12 +137,10 @@ class MainActivity : Activity() {
             .setPositiveButton("Save") { _, _ ->
                 prefs.edit()
                     .putString("url", url.text.toString().trim().ifBlank { DEFAULT_URL })
-                    .putString("key", key.text.toString().trim())
                     .putString("pass", pass.text.toString().trim())
                     .apply()
                 pageReady = false
                 web.loadUrl(siteUrl)
-                WakeService.start(this, WakeService.ACTION_RELEASE)
                 WakeService.start(this)
             }
             .setNegativeButton("Cancel", null)
