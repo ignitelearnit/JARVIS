@@ -232,6 +232,7 @@
 
   // ---------- boot ----------
   async function loadVoice() {
+    if (NATIVE && localStorage.getItem("jarvis-hq") !== "1") return;   // light mode: Android's own voice, no heavy model
     setState("thinking", "loading voice (first time takes a minute)");
     try {
       const { JarvisVoice } = await import("/voice.js");
