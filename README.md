@@ -25,6 +25,14 @@ Optional: point a subdomain such as `jarvis.yourdomain.com` at the Netlify site 
 - You can also type in the box at the bottom.
 - The Mic button turns always-listening on and off.
 
+## The Jarvis voice
+
+Jarvis speaks with a community-made Piper voice model of the film Jarvis (`jgkawell/jarvis` on Hugging Face), running entirely in your browser. The first start downloads about 80MB (the voice plus a small phonemiser), then it is cached.
+
+- By default the page tries to fetch the model from Hugging Face. If that fails it falls back to your browser's built-in voice.
+- To host the voice yourself (more reliable), download the `.onnx` file and its matching `.onnx.json` from the Hugging Face repo, rename them to `jarvis.onnx` and `jarvis.onnx.json`, and put them in `public/voice/`. The page checks there first.
+- The model is a fan-made imitation of the actor's voice from the films. Keep this project private and passcode-protected, and do not use it commercially.
+
 ## Limits to know about
 
 - Wake word listening uses the browser's built-in speech recognition. It works in Chrome and Edge, needs the tab open, and will not run in the background on a locked phone. That is what the Android app step is for.

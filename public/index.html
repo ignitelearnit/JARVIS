@@ -92,7 +92,19 @@
     speechSynthesis.onvoiceschanged = pickVoice;
     pickVoice();
   }
-  function speak(text) {
+  let jarvisVoice = null;        // Piper voice, loaded at start-up (null = use browser voice)
+  async function speak(text) {
+    if (jarvisVoice && jarvisVoice.ready) {
+      try {
+        await jarvisVoice.speak(text, { onStart: () => setState("speaking", "speaking") });
+        return;
+      } catch (e) {
+        console.warn("[jarvis voice] failed, using browser voice for this reply", e);
+      }
+    }
+    return speakFallback(text);
+  }
+  function speakFallback(text) {
     return new Promise((resolve) => {
       if (!("speechSynthesis" in window)) return resolve();
       speechSynthesis.cancel();
@@ -216,6 +228,17 @@
     pass = $("pass").value.trim();
     localStorage.setItem("jarvis-pass", pass);
     $("gate").classList.add("hidden");
+    setState("thinking", "loading voice (first time takes a minute)");
+    try {
+      const { JarvisVoice } = await import("/voice.js");
+      jarvisVoice = new JarvisVoice();
+      jarvisVoice.init();          // inside the click, so the browser allows audio
+      const ok = await jarvisVoice.load((p) => setState("thinking", "loading voice " + Math.round(p * 100) + "%"));
+      if (!ok) { jarvisVoice = null; addLog("jarvis", "I couldn't load my proper voice, so you're stuck with the standard one for now."); }
+    } catch (e) {
+      jarvisVoice = null;
+      console.warn(e);
+    }
     setState("idle", "standing by");
     toggleListening();
     const hello = "Systems online. How can I help?";
@@ -250,7 +273,12 @@
     t /= 1000;
     const target = { idle: 0.15, listening: 0.4, thinking: 0.75, speaking: 1 }[state] || 0.15;
     energy += (target - energy) * 0.05;
-    const wobble = state === "speaking" ? (Math.sin(t * 18) + Math.sin(t * 7.3)) * 0.5 : 0;
+    let wobble = 0;
+    if (state === "speaking") {
+      wobble = (jarvisVoice && jarvisVoice.ready)
+        ? (jarvisVoice.level() * 2 - 0.4)                    // follows the real voice
+        : (Math.sin(t * 18) + Math.sin(t * 7.3)) * 0.5;      // fake pulse for browser voice
+    }
 
     ctx.clearRect(0, 0, W, H);
     const cx = W / 2, cy = H * 0.42;
