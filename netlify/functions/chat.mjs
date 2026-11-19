@@ -3,7 +3,7 @@
 // JARVIS_MODEL (optional), USER_NAME (optional, default "sir").
 
 const MODEL = process.env.JARVIS_MODEL || "claude-haiku-5-5";
-const MAX_HISTORY = 8;
+const MAX_HISTORY = 16;
 
 function persona() {
   const name = process.env.USER_NAME || "sir";

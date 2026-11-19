@@ -58,7 +58,15 @@
 
   // ---------- state ----------
   let state = "idle";            // idle | listening | thinking | speaking
-  let history = [];              // chat history sent to the brain
+  // Conversation memory survives closing the app (kept on this device for 24 hours).
+  let history = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem("jarvis-history") || "null");
+    if (saved && Date.now() - saved.t < 24 * 3600 * 1000 && Array.isArray(saved.h)) history = saved.h;
+  } catch {}
+  function saveHistory() {
+    try { localStorage.setItem("jarvis-history", JSON.stringify({ t: Date.now(), h: history.slice(-40) })); } catch {}
+  }
   let pass = localStorage.getItem("jarvis-pass") || "";
   let recog = null, wantListening = false, awake = false, awakeTimer = null, busy = false;
   const AWAKE_MS = 20000;        // follow-up window after wake word
@@ -74,6 +82,8 @@
     logEl.appendChild(p);
     logEl.scrollTop = logEl.scrollHeight;
   }
+
+  history.slice(-4).forEach((m) => addLog(m.role === "user" ? "user" : "jarvis", m.content));
 
   // ---------- voice out ----------
   let voice = null;
@@ -249,6 +259,7 @@
       }
     }
     thinkSound.stop();
+    saveHistory();
     await speaker.done();
     busy = false;
     if (NATIVE) {                // Android app: listen once for a follow-up, the app handles the rest
