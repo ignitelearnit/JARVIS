@@ -224,7 +224,19 @@
         }
         if (pending.trim()) speaker.push(pending.trim());
         reply = reply.trim();
-        if (reply) history.push({ role: "assistant", content: reply });
+        if (!reply) {
+          // empty stream: try once more without streaming, which also reports the real error
+          try {
+            const r2 = await fetch("/api/chat", {
+              method: "POST",
+              headers: { "content-type": "application/json", "x-jarvis-pass": pass },
+              body: JSON.stringify({ messages: history }),
+            });
+            const d2 = await r2.json();
+            reply = (r2.ok ? d2.reply : "") || "";
+          } catch {}
+        }
+        if (reply) { show(reply); speaker.push(reply); history.push({ role: "assistant", content: reply }); }
         else { history.pop(); reply = "My apologies, I seem to have lost my train of thought."; show(reply); speaker.push(reply); }
       }
     } catch (e) {

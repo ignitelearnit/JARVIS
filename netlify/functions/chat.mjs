@@ -83,6 +83,10 @@ export default async (req) => {
             if (!line.startsWith("data:")) continue;
             try {
               const ev = JSON.parse(line.slice(5));
+              if (ev.type === "error") console.error("Anthropic stream error", JSON.stringify(ev));
+              if (ev.type === "message_delta" && ev.delta && ev.delta.stop_reason && ev.delta.stop_reason !== "end_turn") {
+                console.warn("Stream stop_reason", ev.delta.stop_reason);
+              }
               if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") {
                 controller.enqueue(enc.encode(ev.delta.text));
               }
